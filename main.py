@@ -58,19 +58,51 @@ def scrape_game_names():
     print(f"Scraped {len(names)} names")
     return names[:100]
 
+from datetime import date
+import gspread
+
 def write_to_sheet(game_names):
-    service_account_info = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"])
+    print("Reading Google secrets...")
+    raw_json = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
+    sheet_id = os.environ["GOOGLE_SHEET_ID"]
+
+    service_account_info = json.loads(raw_json)
     creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
     client = gspread.authorize(creds)
 
-    sheet_id = os.environ["GOOGLE_SHEET_ID"]
+    print("Opening sheet...")
     sh = client.open_by_key(sheet_id)
 
-    ws = sh.sheet1
-    ws.clear()
-    ws.update("A1", [["Game Name"]] + [[name] for name in game_names])
+    # --- RAW DATA TAB: replace every run ---
+    try:
+        raw_ws = sh.worksheet("Raw Data")
+    except gspread.WorksheetNotFound:
+        raw_ws = sh.sheet1
+        raw_ws.update_title("Raw Data")
 
-if __name__ == "__main__":
-    games = scrape_game_names()
-    write_to_sheet(games)
-    print(f"Wrote {len(games)} game names.")
+    raw_ws.clear()
+    raw_ws.update("A1", [["Game Name"]] + [[name] for name in game_names])
+
+    # --- DATA ARCHIVE TAB: append every run ---
+    try:
+        archive_ws = sh.worksheet("Data Archive")
+    except gspread.WorksheetNotFound:
+        archive_ws = sh.add_worksheet(title="Data Archive", rows=2000, cols=3)
+
+    today = date.today().isoformat()
+
+    # If the sheet is empty, add headers first
+    existing_values = archive_ws.get_all_values()
+    if not existing_values:
+        archive_ws.update("A1", [["Position", "Game Name", "Date"]])
+
+    # Build the new batch: 100 rows + 1 blank row
+    rows_to_add = []
+    for i, name in enumerate(game_names, start=1):
+        rows_to_add.append([i, name, today])
+
+    rows_to_add.append(["", "", ""])  # blank row after each daily batch
+
+    archive_ws.append_rows(rows_to_add, value_input_option="RAW")
+
+    print("Done writing Raw Data and appending Data Archive")
