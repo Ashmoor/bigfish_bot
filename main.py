@@ -13,37 +13,33 @@ SCOPES = [
 ]
 
 def scrape_game_names():
+    print("Starting browser...")
     names = []
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
-        page.goto(URL, wait_until="networkidle", timeout=120000)
-        page.wait_for_timeout(5000)
 
-        # Try common title selectors
-        selectors = [
-            "h3",
-            "h2",
-            "a[title]",
-            "a",
-        ]
+        print(f"Opening {URL}")
+        page.goto(URL, wait_until="domcontentloaded", timeout=120000)
+        page.wait_for_timeout(8000)
 
+        selectors = ["h3", "h2", "a[title]", "a"]
         seen = set()
 
         for selector in selectors:
+            print(f"Trying selector: {selector}")
             elements = page.locator(selector)
             count = elements.count()
+            print(f"Found {count} elements")
 
             for i in range(count):
                 try:
                     text = elements.nth(i).inner_text().strip()
-                except:
+                except Exception:
                     continue
 
-                if not text:
-                    continue
-                if len(text) < 3:
+                if not text or len(text) < 3:
                     continue
 
                 bad = {
@@ -59,7 +55,7 @@ def scrape_game_names():
 
         browser.close()
 
-    # Keep first 100 likely titles
+    print(f"Scraped {len(names)} names")
     return names[:100]
 
 def write_to_sheet(game_names):
