@@ -103,11 +103,11 @@ def write_to_sheet(game_names):
     rows_to_add = []
     if len(existing_values) == 0:
         rows_to_add.append(["Position", "Game Name", "Date"])
-
+    elif len(existing_values) > 0:
+        rows_to_add.append(["", "", ""])  # blank row before each new batch
+    
     for i, name in enumerate(game_names, start=1):
         rows_to_add.append([i, name, today])
-
-    rows_to_add.append(["", "", ""])  # blank row after each batch
 
     next_row = len(existing_values) + 1
     print(f"Writing {len(rows_to_add)} rows to Data Archive starting at row {next_row}...")
