@@ -1,11 +1,13 @@
 import json
 import os
-from playwright.sync_api import sync_playwright
+import traceback
+from datetime import date
+
 import gspread
 from google.oauth2.service_account import Credentials
+from playwright.sync_api import sync_playwright
 
 URL = "https://www.bigfishgames.com/pc-bestsellers.html?sort_by=sales_rank_weekly&sort_dir=DESC&page=1"
-SHEET_NAME = "BigFish Games"
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -31,7 +33,7 @@ def scrape_game_names():
             print(f"Trying selector: {selector}")
             elements = page.locator(selector)
             count = elements.count()
-            print(f"Found {count} elements")
+            print(f"Found {count} elements for {selector}")
 
             for i in range(count):
                 try:
@@ -56,10 +58,11 @@ def scrape_game_names():
         browser.close()
 
     print(f"Scraped {len(names)} names")
-    return names[:100]
+    print("First 10 scraped names:")
+    for n in names[:10]:
+        print(f"- {n}")
 
-from datetime import date
-import gspread
+    return names[:100]
 
 def write_to_sheet(game_names):
     print("Reading Google secrets...")
@@ -70,39 +73,57 @@ def write_to_sheet(game_names):
     creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
     client = gspread.authorize(creds)
 
-    print("Opening sheet...")
+    print("Opening spreadsheet file...")
     sh = client.open_by_key(sheet_id)
+    print(f"Spreadsheet title: {sh.title}")
 
-    # --- RAW DATA TAB: replace every run ---
-    try:
-        raw_ws = sh.worksheet("Raw Data")
-    except gspread.WorksheetNotFound:
-        raw_ws = sh.sheet1
-        raw_ws.update_title("Raw Data")
+    print("Available tabs:")
+    for ws in sh.worksheets():
+        print(f"- {ws.title}")
 
+    print("Opening Raw Data tab...")
+    raw_ws = sh.worksheet("Raw Data")
+
+    print("Clearing and writing Raw Data...")
+    raw_rows = [["Game Name"]] + [[name] for name in game_names]
     raw_ws.clear()
-    raw_ws.update("A1", [["Game Name"]] + [[name] for name in game_names])
+    raw_ws.update("A1", raw_rows)
+    print(f"Wrote {len(raw_rows)-1} game names to Raw Data")
 
-    # --- DATA ARCHIVE TAB: append every run ---
-    try:
-        archive_ws = sh.worksheet("Data Archive")
-    except gspread.WorksheetNotFound:
-        archive_ws = sh.add_worksheet(title="Data Archive", rows=2000, cols=3)
+    print("Opening Data Archive tab...")
+    archive_ws = sh.worksheet("Data Archive")
 
     today = date.today().isoformat()
+    print(f"Today is {today}")
 
-    # If the sheet is empty, add headers first
+    print("Reading existing archive values...")
     existing_values = archive_ws.get_all_values()
-    if not existing_values:
-        archive_ws.update("A1", [["Position", "Game Name", "Date"]])
+    print(f"Existing row count in Data Archive: {len(existing_values)}")
 
-    # Build the new batch: 100 rows + 1 blank row
     rows_to_add = []
+    if len(existing_values) == 0:
+        rows_to_add.append(["Position", "Game Name", "Date"])
+
     for i, name in enumerate(game_names, start=1):
         rows_to_add.append([i, name, today])
 
-    rows_to_add.append(["", "", ""])  # blank row after each daily batch
+    rows_to_add.append(["", "", ""])  # blank row after each batch
 
-    archive_ws.append_rows(rows_to_add, value_input_option="RAW")
+    next_row = len(existing_values) + 1
+    print(f"Writing {len(rows_to_add)} rows to Data Archive starting at row {next_row}...")
+    archive_ws.update(f"A{next_row}", rows_to_add)
 
-    print("Done writing Raw Data and appending Data Archive")
+    print("Done writing both tabs.")
+
+if __name__ == "__main__":
+    try:
+        games = scrape_game_names()
+        if not games:
+            raise Exception("No game names were scraped.")
+        write_to_sheet(games)
+        print("Script finished successfully.")
+    except Exception as e:
+        print("ERROR:")
+        print(str(e))
+        traceback.print_exc()
+        raise
