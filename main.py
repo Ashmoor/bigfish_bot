@@ -87,7 +87,7 @@ def write_to_sheet(game_names):
     print("Clearing and writing Raw Data...")
     raw_rows = [["Game Name"]] + [[name] for name in game_names]
     raw_ws.clear()
-    raw_ws.update("A1", raw_rows)
+    raw_ws.update(range_name="A1", values=raw_rows)
     print(f"Wrote {len(raw_rows)-1} game names to Raw Data")
 
     print("Opening Data Archive tab...")
@@ -110,8 +110,15 @@ def write_to_sheet(game_names):
         rows_to_add.append([i, name, today])
 
     next_row = len(existing_values) + 1
+    required_last_row = next_row + len(rows_to_add) - 1
+    
+    if archive_ws.row_count < required_last_row:
+        rows_needed = required_last_row - archive_ws.row_count
+        print(f"Adding {rows_needed} rows to Data Archive...")
+        archive_ws.add_rows(rows_needed)
+    
     print(f"Writing {len(rows_to_add)} rows to Data Archive starting at row {next_row}...")
-    archive_ws.update(f"A{next_row}", rows_to_add)
+    archive_ws.update(range_name=f"A{next_row}", values=rows_to_add)
 
     print("Done writing both tabs.")
 
